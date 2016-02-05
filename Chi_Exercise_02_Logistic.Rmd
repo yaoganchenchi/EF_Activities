@@ -411,8 +411,6 @@ Initial_uncertainty_test = function(r) {
 Initial_uncertainty_test(1.95) #r=1.95
 Initial_uncertainty_test(2.05) #r=2.05
 Initial_uncertainty_test(2.8) #r=2.8
-
-
 ```
 
 
