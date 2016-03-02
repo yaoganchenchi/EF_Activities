@@ -1,0 +1,217 @@
+---
+title: "Introduction to JAGS"
+author: "Student: Chi Chen, Professor: Michael Dietze"
+date: "February 25, 2016"
+output: html_document
+---
+
+```{r,echo=FALSE}
+require(rjags)
+require(coda)
+```
+
+
+# Case Study: Forest Stand Characteristics
+
+For the next few examples we'll be using a dataset on the diameters of loblolly pine trees at the Duke FACE experiment. In this example we'll just be looking at the diameter data in order to characterize the stand itself. Let's begin by expanding the model we specified above to account for a large dataset (rather than a single observation), in order to estimate the mean stem diameter at the site. As a first step let's still assume that the variance is known. Our data set has 297 values, so when specifying the model in JAGS we'll need to loop over each value to calculate the likelihood of each data point and use the vector index notation, [i] , to specify which value we're computing.
+
+The data for fiting this model are
+
+```{r}
+data = list(N = 297, mu0=20, T=0.01, S = 1/27, X = c(20.9, 13.6, 15.7, 6.3, 2.7, 25.6, 4, 20.9, 7.8, 27.1, 25.2, 19, 17.8, 22.8, 12.5, 21.1, 22, 22.4, 5.1, 16, 20.7, 15.7, 5.5, 18.9, 22.9, 15.5, 18.6, 19.3, 14.2, 12.3, 11.8, 26.8, 17, 5.7, 12, 19.8, 19, 23.6, 19.9, 8.4, 22, 18.1, 21.6, 17, 12.4, 2.9, 22.6, 20.8, 18.2, 14.2, 17.3, 14.5, 8.6, 9.1, 2.6, 19.8, 20, 22.2, 10.2, 12.9, 20.9, 21.1, 7.3, 5.8, 23.1, 17, 21.5, 10.1, 18.4, 22.6, 21.2, 21.5, 22.4, 17.3, 16, 25, 22.4, 23.9, 23, 21.9, 19, 28.6, 16, 22.5, 23.2, 8.7, 23.4, 15.3, 25.6, 19.2, 17.4, 23.8, 20.4, 19, 3.6, 23.4, 19.6, 17.5, 16.5, 22, 19.7, 7.35, 18, 17.8, 9.6, 15, 12, 17.7, 21.4, 17, 22.1, 18.9, 15.05, 12.9, 19.3, 15.3, 13.6, 15.4, 10.6, 11.3, 11.8, 22.2, 22.2, 13.1, 7.4, 4.5, 11.7, 19.5, 19.9, 11.6, 13.9, 15.5, 11, 18.6, 17.6, 12.7, 20.9, 18.8, 22.4, 21.2, 18.2, 15.3, 13.6, 7.3, 17.4, 17.4, 10.5, 22.9, 23.2, 13.8, 14.8, 22.2, 20.9, 13, 18.9, 19, 15.2, 16.8, 18, 24.6, 15.4, 17.2, 23.2, 22.8, 25.5, 7.8, 6, 6.4, 19, 13.5, 23.7, 18, 22.2, 22.4, 9.3, 13.7, 18.9, 20.5, 23.3, 20.8, 18.4, 4.5, 12.2, 16.9, 13.5, 17.8, 16.9, 20.4, 19.5, 22.2, 24.5, 21.2, 16.5, 18, 16.4, 3.9, 17.9, 22, 12.9, 21, 18, 9.2, 15.9, 8.1, 8.3, 10.7, 12, 19.9, 13.6, 17.3, 11.5, 12.4, 15.1, 22, 19.3, 17.5, 14.5, 14.7, 17.5, 19.6, 12.9, 20.3, 17.9, 20.2, 18.3, 9.5, 19, 21, 13.1, 20.4, 16.3, 18.3, 11.8, 23.3, 15.2, 20, 17.9, 12, 19.6, 18.5, 16.2, 10.9, 17.8, 13.8, 10, 17.9, 15.6, 20.3, 14.9, 18.6, 12.5, 18.2, 16, 18.7, 18, 15.3, 19, 17.9, 15.8, 17.7, 14.4, 19.6, 18.3, 18.7, 17.8, 18, 10.1, 18.8, 16.4, 21.2, 16.6, 16.7, 17.8, 16.5, 19.3, 16.3, 14.2, 13, 9.4, 19.7, 13.4, 2.6, 17.6, 16.7, 17.6, 5.8, 17.6, 20.1, 18.2, 16.7, 14, 13.9, 5.1, 16.6, 3.9, 17.5, 18))
+```
+
+### Activity Task 1
+Run the unknown mean/fixed variance model to estimate mean tree diameter. Include the following in your report:
+
+* Table of summary statistics for the posterior estimate of the mean
+* Graph of parameter density
+* Plot of MCMC “history”
+* Length of your MCMC (i.e. the total number of “updates”), the number of chains, the burnin values you used, the effective sample size, and any graphs/statistics/rationale you used to justify those settings
+
+#### Answer for Task 1
+1. Table of summary statistics for posterior estimate of the mean: please see below, which is post burnin and post thinning.
+
+2. Plot of MCMC history, please see below.
+
+3. a. The initial length of my MCMC for each chain is 1000. 
+   b. The number of chains is 3, since it is a typical choice. 
+   c. Before doing burnin, check the convergence. The burnin values is: the number of iteractions before the first iteration after convergence. 
+   d. The effective sample size is determined by **effectiveSize(jags.burn)**.  This value will help me to choose the thinning interval (3 chains * 5000 iterations / effectiveSize). In this case, it will be rounded it to 1 in most of the cases.
+   
+```{r}
+##setup the jags model
+NormalMeanN <- "
+model {
+  mu ~ dnorm(mu0,T) # prior on the mean 
+  for(i in 1:N){
+    X[i] ~ dnorm(mu,S) # data model
+  }
+}
+"
+## Set initial condition
+X_bar = mean(data$X)
+X_std = sd(data$X)  #check how they looks like
+inits <- list()
+inits[[1]] <- list(mu = 16+25)
+inits[[2]] <- list(mu = 16)
+inits[[3]] <- list(mu = 16-5)
+n.chains=3
+n.iter=5000
+
+##call jags model
+j.model   <- jags.model (file = textConnection(NormalMeanN),
+                         data = data,
+                         inits = inits,
+                         n.chains = n.chains)
+
+##do MCMC
+jags.out   <- coda.samples (model = j.model,
+                            variable.names = c("mu"),
+                            n.iter = n.iter)
+
+##looking at the overall convergence
+gelman.diag(jags.out)
+
+cumuplot(jags.out,probs=c(0.025,0.25,0.5,0.75,0.975))
+
+## GBR statistics - evaluate among chain variance, and remove burn-in case
+GBR <- gelman.plot(jags.out)
+burnin <- GBR$last.iter[tail(which(GBR$shrink[,,2] > 1.1),1)+1]
+if(length(burnin) == 0 || is.na(burnin)) burnin = 1
+
+if(is.na(burnin)){
+  cat('Not converged! Increase your interations.')
+}else{
+  jags.burn <- window(jags.out,start=burnin)
+  
+  ## check diagnostics post burn-in
+  gelman.diag(jags.burn)
+  
+  ##check effective sample size 
+  acfplot(jags.burn)
+  effectiveSize(jags.burn)
+  thin.interval = min(floor(n.chains*n.iter / effectiveSize(jags.burn)))
+  
+  if (thin.interval>1){
+    ##thinning it
+    jags.thin = window(jags.burn,thin=thin.interval)
+    plot(jags.thin)
+    
+    summary(jags.thin)
+  } else {
+    cat('No big autocorrelations. No need to thin.')
+    plot(jags.burn)
+    summary(jags.burn)
+  }
+}
+
+```
+
+
+### Activity Task 2
+Modify the model to account for the uncertainty in the variance. This only requires adding one line — a prior on S outside the loop.
+
+Run the unknown mean/unknown variance model to simultaneously estimate both the mean tree diameter and the standard deviation. Include in your report the following:
+
+* Explaination of your choice of prior on the precision
+* Table of summary statistics for the posterior mean and standard deviation
+* Graph of parameter densities
+* Plot of MCMC “history”
+* Length of your MCMC (i.e. the total number of “updates”), the number of chains, burnin, effective sample size, and any graphs/statistics/rationale you used to justify those settings
+* Also describe any changes in the distribution of the mean (shape, location, tails) compared to Task 1.
+
+#### Answer for Task 2
+1. Choice of prior on the precision: 
+   a. It should be positive.
+   b. No double-dipping. It should not be calculated from the observed data: "It should be reasonable but has minimal information content, allowing the likelihood to dominate the anaysis."
+   c. I assume that the stem diameter ranges from 5-35 cm. Under this assumption, the maximum variance could be 900. Also, in reality, there is no perfect homogeneous plots, and thus, I set the minimum variance to 4. Assume the PDF of 1/variance is a uniform distribution, thus, I choose S ~  dunif(1/900,1/4). 
+  
+2. a. The initial length of my MCMC for each chain is 5000. 
+   b. The number of chains is 3, since it is a typical choice. 
+   c. Before doing burnin, check the convergence. The burnin values is: (1) for each variable, the number of iteractions before the first iteration after convergence. (2) Take the max.
+   d. The effective sample size is determined by **effectiveSize(jags.burn)**. And I use the sample size to determine my thinning interval. In this case, I have two effective size values, one for S and the other for mu. I selected the larger one as the effective size. For example, I have two values: 14000 and 15000 for S and mu, respectively. Then, I will choose 15000 as the effective size.
+   
+3. Compared to Task 1, the distribution of the mean (shape,standard deviation,peak frequency,tails) is similar. In addition, theit Time-series SE are similar. The only difference is, in some cases, Task 2 takes more iterations to get converged.
+
+
+#### S with uniform distribution
+```{r}
+rm(list = ls())
+data = list(N = 297, mu0=20, T=0.01, X = c(20.9, 13.6, 15.7, 6.3, 2.7, 25.6, 4, 20.9, 7.8, 27.1, 25.2, 19, 17.8, 22.8, 12.5, 21.1, 22, 22.4, 5.1, 16, 20.7, 15.7, 5.5, 18.9, 22.9, 15.5, 18.6, 19.3, 14.2, 12.3, 11.8, 26.8, 17, 5.7, 12, 19.8, 19, 23.6, 19.9, 8.4, 22, 18.1, 21.6, 17, 12.4, 2.9, 22.6, 20.8, 18.2, 14.2, 17.3, 14.5, 8.6, 9.1, 2.6, 19.8, 20, 22.2, 10.2, 12.9, 20.9, 21.1, 7.3, 5.8, 23.1, 17, 21.5, 10.1, 18.4, 22.6, 21.2, 21.5, 22.4, 17.3, 16, 25, 22.4, 23.9, 23, 21.9, 19, 28.6, 16, 22.5, 23.2, 8.7, 23.4, 15.3, 25.6, 19.2, 17.4, 23.8, 20.4, 19, 3.6, 23.4, 19.6, 17.5, 16.5, 22, 19.7, 7.35, 18, 17.8, 9.6, 15, 12, 17.7, 21.4, 17, 22.1, 18.9, 15.05, 12.9, 19.3, 15.3, 13.6, 15.4, 10.6, 11.3, 11.8, 22.2, 22.2, 13.1, 7.4, 4.5, 11.7, 19.5, 19.9, 11.6, 13.9, 15.5, 11, 18.6, 17.6, 12.7, 20.9, 18.8, 22.4, 21.2, 18.2, 15.3, 13.6, 7.3, 17.4, 17.4, 10.5, 22.9, 23.2, 13.8, 14.8, 22.2, 20.9, 13, 18.9, 19, 15.2, 16.8, 18, 24.6, 15.4, 17.2, 23.2, 22.8, 25.5, 7.8, 6, 6.4, 19, 13.5, 23.7, 18, 22.2, 22.4, 9.3, 13.7, 18.9, 20.5, 23.3, 20.8, 18.4, 4.5, 12.2, 16.9, 13.5, 17.8, 16.9, 20.4, 19.5, 22.2, 24.5, 21.2, 16.5, 18, 16.4, 3.9, 17.9, 22, 12.9, 21, 18, 9.2, 15.9, 8.1, 8.3, 10.7, 12, 19.9, 13.6, 17.3, 11.5, 12.4, 15.1, 22, 19.3, 17.5, 14.5, 14.7, 17.5, 19.6, 12.9, 20.3, 17.9, 20.2, 18.3, 9.5, 19, 21, 13.1, 20.4, 16.3, 18.3, 11.8, 23.3, 15.2, 20, 17.9, 12, 19.6, 18.5, 16.2, 10.9, 17.8, 13.8, 10, 17.9, 15.6, 20.3, 14.9, 18.6, 12.5, 18.2, 16, 18.7, 18, 15.3, 19, 17.9, 15.8, 17.7, 14.4, 19.6, 18.3, 18.7, 17.8, 18, 10.1, 18.8, 16.4, 21.2, 16.6, 16.7, 17.8, 16.5, 19.3, 16.3, 14.2, 13, 9.4, 19.7, 13.4, 2.6, 17.6, 16.7, 17.6, 5.8, 17.6, 20.1, 18.2, 16.7, 14, 13.9, 5.1, 16.6, 3.9, 17.5, 18))
+
+##setup the jags model
+NormalMeanN <- "
+model {
+S ~ dunif(1/900,1/4)
+mu ~ dnorm(mu0,T) # prior on the mean 
+for(i in 1:N){
+X[i] ~ dnorm(mu,S) # data model
+}
+}
+"
+
+#set initial conditions
+inits <- list()
+inits[[1]] <- list(mu = 16+25,S=1/54)
+inits[[2]] <- list(mu = 16,S=1/27)
+inits[[3]] <- list(mu = 16-5,S=1/10)
+
+
+##call jags model
+n.chains=3
+n.iter=5000
+j.model   <- jags.model (file = textConnection(NormalMeanN),
+                         data = data,
+                         inits = inits,
+                         n.chains = n.chains)
+
+##do MCMC
+jags.out   <- coda.samples (model = j.model,
+                            variable.names = c("mu",'S'),
+                            n.iter = n.iter)
+
+##looking at the overall convergence
+gelman.diag(jags.out)
+
+cumuplot(jags.out,probs=c(0.025,0.25,0.5,0.75,0.975))
+## GBR statistics - evaluate among chain variance, and remove burn-in case
+GBR <- gelman.plot(jags.out)
+burnin <- GBR$last.iter[max(apply(GBR$shrink[,,2] > 1.1,2,function(x){
+  y = tail(which(x),1)+1;
+  if(length(y)==0) y=1;
+  return(y)}
+))]
+
+if(is.na(burnin)){
+  cat('Not converged!Increase your interations.')
+  
+}else{
+  jags.burn <- window(jags.out,start=burnin)
+  
+  ## check diagnostics post burn-in
+  gelman.diag(jags.burn)
+  
+  ##check effective sample size 
+  acfplot(jags.burn)
+  effectiveSize(jags.burn)
+  thin.interval = min(floor(n.chains*n.iter / effectiveSize(jags.burn)))
+  
+  if (thin.interval>1){
+    ##thinning it
+    jags.thin = window(jags.burn,thin=thin.interval)
+    plot(jags.thin)
+    summary(jags.thin)
+  } else {
+    cat('No big autocorrelations. No need to thin.')
+    plot(jags.burn)
+    summary(jags.burn)
+  }
+}
+
+
+```
+
+
+
+
