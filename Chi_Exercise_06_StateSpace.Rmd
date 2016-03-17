@@ -6,7 +6,7 @@ output: html_document
 ---
 ========================================================
 
-## Make a function for the JAGS model and shaded CI plot
+## set functions for the JAGS model and shaded CI plot
 ```{r}
 predict.JAGS <- function(time,y) {
 library(rjags)
@@ -48,14 +48,18 @@ j.model   <- jags.model (file = textConnection(RandomWalk),
 jags.out   <- coda.samples (model = j.model,
                             variable.names = c("tau_add","tau_obs"),
                             n.iter = 1000)
-# Only to plot 1000 iterations. It takes so much time to plot 10000 iterations.  
+# Only to plot 1000 iterations.  
 plot(jags.out) 
 
 jags.out   <- coda.samples (model = j.model,
                             variable.names = c("x","tau_add","tau_obs"),
                             n.iter = 10000)
- 
+
+#summary of the final 10000 iteration jags.out
+#summary(jags.out)
+
 }
+
 
 # function for shaded confidence interval
 ciEnvelope <- function(x,ylo,yhi,...){
@@ -114,13 +118,14 @@ To look at how observation frequency affects data assimilation, convert 3 out of
 * Generate a predicted (median) vs observed plot for the data points that were removed
 * Comment on the accuracy and precision of the estimates.
 
-## Answers
+### Answer
 1. The invertal of CI is much larger in the 2nd run.
-2. Generate a predicted (median) vs observed plot for the data points that were removed: Generally, they still have a linear relationship. The linear relationship is stronger when flu index is small(i.e.less than 1800), and it becomes weaker when flu index get larger. Also, their slope is way off 1. Predicted median is smaller than observed data.
-3. Comment on the accuracy and precision: From the histogram of tau_obs and tau_add, those in the 2nd run are much larger than the 1st run. I also tried to use the median to represent the accuracy of the two runs. The scatter plots (observed vs predicted median) show that the 1st run is more accurate. In addition, I did OLS to check how much variantion in observed data (R square) can be explianed by the predicted median of the two runs. The results also show that the 1st run is more accurate. In addtion, the two OLS models show that the slope of the 1st run is closer to 1.  About the precision, the confidence interval can tell the whole thing. Obviously, the 1st run is better.
-4. SO, my conclusion is: increasing the data frequency can improve our prediction model.
 
-## Convert 3 out of every 4 observatoins to NA
+2. Generate a predicted (median) vs observed plot for the data points that were removed: Generally, they still have a linear relationship. The linear relationship is stronger when flu index is small(i.e.less than ~1800), and it becomes weaker when flu index get larger. Also, their slope is way off 1. Predicted median is smaller than observed data.
+
+3. Comment on the accuracy and precision: From the histogram of tau_obs and tau_add, those in the 2nd run are much larger than the 1st run. I used the median to represent the accuracy of the two runs. The scatter plots (observed vs predicted median) show that the 1st run is more accurate. In addition, I did OLS to check how much variantion (R square) in observed data can be explianed by the predicted median of the two runs. The results also show that the 1st run is more accurate. In addtion, the two OLS models show that the slope of the 1st run is closer to 1.  About the precision, the confidence interval can tell the whole thing. Obviously, the 1st run is better.
+4. So, in this random walk model case, increasing the data frequency can improve our prediction model.
+
 ```{r}
 time = as.Date(gflu$Date)
 y = gflu$Massachusetts
@@ -153,18 +158,20 @@ legend("topleft",lty=c(1,0,0),c('95% CI','data used to fit model','data not used
 #Generate a predicted (median) vs observed plot for the data points that were removed
 predicted.median = ci[2,]
 predicted.median[index]=NA
-plot(predicted.median,y.removed,main='Predicted median VS observed')
+plot(predicted.median,y.removed,main="Predicted median VS observed (data points that were removed)")
+abline(a=0,b=1)
 
 #About the accuracy and precision of the two runs: scatter plot of observed vs predicted median
-plot(ci.origin[2,],gflu$Massachusetts,main='The 1st run')
-plot(ci[2,],gflu$Massachusetts,main='The 2nd run')
+plot(ci.origin[2,],gflu$Massachusetts,main='The 1st run (all points)')
+abline(a=0,b=1)
+plot(ci[2,],gflu$Massachusetts,main='The 2nd run (all points)')
+abline(a=0,b=1)
 
 # check how much variantion in observed data could be explained by the predicted medians from the two runs
-fit1 =  lm(gflu$Massachusett~ ci.origin[2,]) # full data, weekly observations
-fit2 =  lm(gflu$Massachusett~ ci[2,]) #removed data, monthly data
+fit1 =  lm(gflu$Massachusett~ ci.origin[2,]) # full data - weekly observations
+fit2 =  lm(gflu$Massachusett~ ci[2,]) #removed data - monthly data
 summary(fit1)
 summary(fit2)
-
 
 
 layout(matrix(c(1,2,3,3),2,2,byrow=TRUE))
@@ -183,9 +190,12 @@ Return to the original data and instead of removing 3/4 of the data remove the l
 * Generate a time-series plot for the CI of x that includes the observations (as above but zoom the plot on the last ~80 observations). Use a different color and symbol to differentiate observations that were included in the model versus those that were converted to NA's.
 * Comment on how well the random walk model performed (both accuracy and precision) and how it might be modified to improve both these criteria.
 
-## Answer Extra Credit
-1. From the histogram of tau_obs and tau_add, they look very similar to the 1st run (the full weekly frequency run). In particular, in the time-series plot, the accuracy and precision are similiar in the first 1:580 points, but they exploded in the last 40 predictions.
-2. If we want to improve both accuracy and precision, we need to have more observations in those "future period". In this case, the accuracy and precision of random walk model are largely depended on the current data. It also implies that the future preditions are largely depended on the current data (if we don't have the future data).
+### Answer for Extra Credit
+1. From the histogram of tau_obs and tau_add, the 3rd run (removed last 40 points) is similar to the 1st run (the full weekly frequency run). 
+    In particular, in the time-series plot, the precision is similar in the first 1:580 points, but the pricision explodes in the last 40 predictions. 
+    In the  scatter plot of observed vs predicted, we can see the accuracy of the red points (last 40 points that were removed) and the accuracy of the black points (first 580 points that were used to fit the model) are similar. However, I believe the accuracy will get worse in further future predictions due to lacking of data.
+    
+2. If we want to improve both accuracy and precision, we need to have more observations in those "future period". In this case, **the accuracy and precision of random walk model are largely depended on the current data**. It also implies that the future preditions are largely depended on the current data (if we don't have the future data).
 
 ```{r}
 time = as.Date(gflu$Date)
@@ -214,6 +224,18 @@ ciEnvelope(time,ci[1,],ci[3,],col="lightBlue")
 points(time,y,pch="+",cex=0.5)
 points(time,y.removed,pch='*',col='red',cex=0.5)
 legend("topleft",lty=c(1,0,0),c('95% CI','data used to fit model','data not used to fit model'),col=c('lightBlue','black','red'),pch=c(0,'+','*'),lwd=2,cex=0.65)
+
+#About the accuracy and precision of the two runs: scatter plot of observed vs predicted median
+predicted.median.last40 = predicted.median[(length(y)-40+1):620]
+predicted.median.first580 = predicted.median[1:(length(y)-40)]
+obs.last40 = gflu$Massachusetts[(length(y)-40+1):620]
+obs.first580 = gflu$Massachusetts[1:(length(y)-40)]
+
+plot(ci[2,],gflu$Massachusetts,main='The 3rd run',type='n')
+abline(a=0,b=1)
+points(predicted.median.first580,obs.first580)
+points(predicted.median.last40,obs.last40,col='red')
+legend("topleft",lty=c(0,0),c('data used to fit model (first 580 obs)','data not used to fit model(last 40 obs)'),col=c('black','red'),pch=c(1,1),lwd=2,cex=0.65)
 
 layout(matrix(c(1,2,3,3),2,2,byrow=TRUE))
 hist(1/sqrt(out[,1]),main=colnames(out)[1])
