@@ -176,6 +176,8 @@ new.obj = subset(dat,tadpoles>3 & tadpoles<5) #d
 new.obj #display d
 subset(dat,color=="red" & frogs<2.5) #e
 subset(dat,spots=="FALSE" & frogs>5) #f
+
+subset(dat,spots=="FALSE" | frogs>5) #f
 ```
 
 ## Plots, tables, and exploratory analysis
@@ -234,6 +236,12 @@ summary(reg_sig)
 24. Write an if statement that makes a scatter plot of x if all the values are positive, and plots a histogram otherwise.
 ```{r}
 if (any(x>0)){
+  plot(x)
+}else{
+  hist(x)
+}
+
+if (all(x>0)){
   plot(x)
 }else{
   hist(x)
