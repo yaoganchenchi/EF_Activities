@@ -1,7 +1,7 @@
 ---
 title: "Activity 10 - Particle Filter"
 author: "Student: Chi Chen ;  Professor: Michael Dietze"
-date: "April 9, 2016"
+date: "April 12, 2016"
 output: html_document
 ---
 ========================================================
@@ -44,7 +44,7 @@ SSEM.orig <- function(X,params,inputs,timestep=1800){
   ## photosynthesis
   LAI = X[,1]*params$SLA*0.1  #0.1 is conversion from Mg/ha to kg/m2
   if(inputs$PAR>1e-20){
-      GPP = params$alpha*(1-exp(-0.5*LAI)*inputs$PAR)
+      GPP = params$alpha*(1-exp(-0.5*LAI))*inputs$PAR
   } else {
       GPP = rep(0,ne)
   }
@@ -52,8 +52,7 @@ SSEM.orig <- function(X,params,inputs,timestep=1800){
   ## respiration & allocation
   alloc = GPP*params$falloc ## Ra, NPPwood, NPPleaf
   Rh = pmin(params$Rbasal*X[,3]*params$Q10^(inputs$temp/10),X[,3]/k) ## pmin ensures SOM never goes negative
-  #if (any(is.infinite(Rh)) & any(Rh<0)) {Rh=X[,3]/k}
-  Rh[which(is.infinite(Rh)&Rh<0)]=0 
+  
   ## turnover
   litter = X[,1]*params$litter
   CWD = X[,2]*params$CWD
@@ -92,8 +91,8 @@ Having defined our model, the next step is to define the ensemble size and gener
 
 ```{r}
 #### SET THE ENSEMBLE SIZE
-#ne = 10 ## production run should be 200 - 5000, depending on what your computer can handle
 ne = 2000 ## production run should be 200 - 5000, depending on what your computer can handle
+
 ### Initial State (Mg/ha)
 Bwood = (c(11983,12097)+c(3668,3799)+c(161,192))*1e-6*10000 ## stem+coarse root + fine root, g/m2->Mg/ha
 Bleaf = c(206,236)*0.01
@@ -126,13 +125,12 @@ rdirichlet <- cmpfun(rdirichlet.orig)  ## byte compile to speed up
 ## ancillary data
 SLA = 1e3/c(114,120) ## m2/kg
 litter = c(71,94)*0.01*3 ##gC/m2/yr->Mg/ha/yr
-## why here is a factor of 3? should it be 44/12~=3.67? 
 
 ### initial params
 timestep = 1800 #seconds
 params = list()
 
-Ra = 0.75
+Ra = 0.5
 alloc = matrix(c(Ra,(1-0.315)*Ra,0.315*Ra),1) # prior mean on allocation
 Neff = matrix(rpois(ne,100),ne) 
 params$falloc = rdirichlet(ne,Neff%*%alloc)  ## Ra, wood, leaf
@@ -181,19 +179,23 @@ Now we're ready to produce our initial ensemble forecast for the system. To do t
 X = X.orig
 ## default simulation
 #nt = 17*48 # production run should be length(time)
-nt=length(inputs$PAR)
+nt = 365*48
 output = array(0.0,c(nt,ne,12))
 for(t in 1:nt){
   output[t,,]=SSEM(X,params,inputs[t,])
   X=output[t,,1:3]
   if((t %% 48) == 0) print(t/48) ## day counter
 }
+output[is.nan(output)] = 0
+output[is.infinite(output)] = 0
 
 ## average the output to daily
+library(iotools)
 bin = 86400/timestep
 out.daily = array(0.0,c(ceiling(nt/bin),ne,12))
 for(i in 1:12){
-  out.daily[,,i] <- apply(output[,,i],2,function(x){tapply(x,rep(1:365,each=bin)[1:nt],mean)})
+  print(i)
+  out.daily[,,i] <- apply(output[,,i],2, ctapply, rep(1:365,each=bin)[1:nt], mean)
 }
 
 ## Basic time-series visualizations
@@ -314,8 +316,7 @@ update.params <- function(params,index){
 Finally, let's implement the resampling particle filter. The code for this is organized in a way similar to the Kalman Filter assignment -- we loop over time and alternate between a forecast step and an analysis step. Since the observations only occur every 8 days, we only repeat the analysis step every 8 days (which for a 30 min timestep is every 48*8 timesteps).
 
 ```{r}
-### resampling particle filter - with parameter uncertainty
-params2=params  # save for later use
+### resampling particle filter
 sample=0
 hist.params=list()  ## since we resample parameters, create a record (history) of what values were used each step
 hist.params[[1]] = params
@@ -353,7 +354,7 @@ LAIpr = t(apply(output[,,4],2,tapply,window,mean))
 LAIpr.ci  = apply(LAIpr,2,quantile,c(0.025,0.5,0.975))
  
 plot(Mtime[Msel],LAIm.ci[2,],ylim=range(c(range(LAIm.ci),range(LAIr,na.rm=TRUE))),
-     type='n',ylab="LAI",xlab="Time",main="resampling PF with parameter uncertainty")
+     type='n',ylab="LAI",xlab="Time",,main="resampling PF contained parameter uncertainty")
 ciEnvelope(Mtime[Msel],LAIm.ci[1,],LAIm.ci[3,],col=col.alpha("lightGrey",0.5))
 ciEnvelope(Mtime[Msel],LAIpf[1,],LAIpf[3,],col=col.alpha("lightBlue",0.5))
 ciEnvelope(Mtime[Msel],LAIpr.ci[1,],LAIpr.ci[3,],col=col.alpha("lightGreen",0.5))
@@ -392,11 +393,11 @@ for(i in 1:length(params)){
         plot(orig,main=paste(names(params)[i],j), xlab=" ",
              ylim=ylim)
         lines(new,col=2,lwd=2)
-        text(max(orig$x),ylim[2]*0.95,
+        text(max(orig$x),ylim[2],
          paste(format(mean(hist.params[[1]][[i]][,j]),digits=3),
                format(sd(hist.params[[1]][[i]][,j]),digits=3)),
          pos=2)
-        text(max(orig$x),ylim[2]*0.85,
+        text(max(orig$x),ylim[2]*0.9,
          paste(format(mean(params[[i]][,j]),digits=3),
                format(sd(params[[i]][,j]),digits=3)),
          pos=2,col=2)
@@ -407,8 +408,45 @@ par(mfrow=c(1,1))
 ```
 
 ```{r}
+
+## ancillary data
+SLA = 1e3/c(114,120) ## m2/kg
+litter = c(71,94)*0.01*3 ##gC/m2/yr->Mg/ha/yr
+## why here is a factor of 3? should it be 44/12~=3.67? 
+
+### initial params
+timestep = 1800 #seconds
+params = list()
+
+Ra = 0.5
+alloc = matrix(c(Ra,(1-0.315)*Ra,0.315*Ra),1) # prior mean on allocation
+Neff = matrix(100,ne) 
+params$falloc = t(matrix(alloc,nrow=ncol(alloc),ncol=ne))  ## Ra, wood, leaf
+
+params$SLA = rep(mean(SLA),ne)
+params$alpha = rep(0.02,ne) ## light use efficiency
+params$Q10 = rep(2.1,ne)  ## soil respiration Q10
+params$Rbasal =rep(0.2,ne)/(params$Q10^2.5) #umol/m2/sec per Mg/ha of SOM
+
+## use moment matching to convert litter and CWD turnover mean & SD to beta dist'n
+lit=mean(litter)/mean(Bleaf)
+lit.mu = mean(lit)*timestep/86400/365 
+CWD.mu = 1/142*timestep/86400/365
+params$litter= rep(lit.mu,ne)
+params$CWD = rep(CWD.mu,ne) 
+
+## Process error
+params$tau.leaf = rep(1/100,ne)
+params$tau.stem = rep(1/10,ne)
+params$tau.soil =rep(1/10,ne)  
+
+
+
+
+```
+
+```{r}
 ### resampling particle filter - without parameter uncertainty
-params=params2   #get back the params
 sample=0
 hist.params=list()  ## since we resample parameters, create a record (history) of what values were used each step
 hist.params[[1]] = params
@@ -431,15 +469,15 @@ for(t in 1:nt){
       wt = dnorm(LAIr[sample],Lm,LAIr.sd[sample])
       
       ## resample 
-      #index = sample.int(ne,ne,replace=TRUE,prob=wt)
+      index = sample.int(ne,ne,replace=TRUE,prob=wt)
       X = X[index,]  #To make the comparison unbiased, keep the same index as previous resampling that is PF with parameter uncertainty.
-      #params = update.params(params,index)    
+      params = update.params(params,index)    
     }
     hist.params[[sample+1]] = params
   }
 
 }
-#save(output,output.ensemble,LAIlike,hist.params,inputs,file="Ex10.output.RData") 
+#save(output,output.ensemble,LAIlike,hist.params,inputs,file="Ex10.output_bck.RData") 
 
 ## Extract and summarize LAI (pr = PF, resampling)
 LAIpr = t(apply(output[,,4],2,tapply,window,mean))

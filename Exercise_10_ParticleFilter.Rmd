@@ -86,7 +86,7 @@ Having defined our model, the next step is to define the ensemble size and gener
 
 ```{r}
 #### SET THE ENSEMBLE SIZE
-ne = 10 ## production run should be 200 - 5000, depending on what your computer can handle
+ne = 500 ## production run should be 200 - 5000, depending on what your computer can handle
 
 ### Initial State (Mg/ha)
 Bwood = (c(11983,12097)+c(3668,3799)+c(161,192))*1e-6*10000 ## stem+coarse root + fine root, g/m2->Mg/ha
@@ -174,6 +174,7 @@ Now we're ready to produce our initial ensemble forecast for the system. To do t
 X = X.orig
 ## default simulation
 nt = 17*48 # production run should be length(time)
+nt = 365*48
 output = array(0.0,c(nt,ne,12))
 for(t in 1:nt){
   output[t,,]=SSEM(X,params,inputs[t,])
