@@ -1,0 +1,510 @@
+Model Assessment
+========================================================
+
+In this activity we will use a series of visualizations and statistical measures to assess the performance of our Super Simple Ecosystem Model at the Metolius site.
+
+Let's start by loading the ensemble output from the previous lab and the observed flux data for the site.
+```{r}
+## load libraries
+library("plotrix")
+library(dplR)
+library(rpart)
+library(randomForest)
+
+## load SSEM output
+load("Ex10.output.RData")
+
+## load flux tower data
+L4 = read.csv("data/AMF_USMe2_2005_L4_h_V002.txt",header=TRUE,na.strings="-9999")
+L4[L4==-9999] = NA
+```
+
+Sanity Check
+------------
+
+When assessing model performance, one can often diagnose bugs in the code and other large errors without the need to make a direct model-data comparison, simply by looking at basic statistics and diagnostic graphs. Also, it is not uncommon to have model outputs for quantities that are not directly observed, but which should be checked to make sure they make sense and that the model is not producing the right answer somewhere else for the wrong reason. In the code below we look at the daily-mean outputs from the unweighted ensemble (output.ensemble) and the resampled particle filter (output)
+
+```{r}
+ciEnvelope <- function(x,ylo,yhi,...){
+  polygon(cbind(c(x, rev(x), x[1]), c(ylo, rev(yhi),
+                                      ylo[1])), border = NA,...) 
+}
+col.alpha <- function(col,alpha=1){
+  rgb = col2rgb(col)
+  rgb(rgb[1],rgb[2],rgb[3],alpha*255,maxColorValue=255)
+}
+varnames <- c("Bleaf","Bwood","BSOM","LAI","NEP","GPP","Ra","NPPw","NPPl","Rh","litter","CWD")
+units <- c("Mg/ha","Mg/ha","Mg/ha","m2/m2","umol/m2/sec","umol/m2/sec","umol/m2/sec","umol/m2/sec","umol/m2/sec","umol/m2/sec","Mg/ha/timestep","Mg/ha/timestep")
+
+## Time-series visualization, daily means
+DoY = floor(L4$DoY-0.02)
+uDoY = sort(unique(DoY))
+ci = list(pf=list(),ens=list())
+for(i in 1:12){
+  ci.pf  = apply(apply(output[,,i],2,tapply,DoY,mean),1,quantile,c(0.025,0.5,0.975))
+  ci.ens = apply(apply(output.ensemble[,,i],2,tapply,DoY,mean),1,quantile,c(0.025,0.5,0.975))
+#  ci.pf = apply(output[,,i],1,quantile,c(0.025,0.5,0.975))
+#  ci.ens = apply(output.ensemble[,,i],1,quantile,c(0.025,0.5,0.975))
+  plot(uDoY,ci.ens[2,],main=varnames[i],xlab="time",ylab=units[i],type='l',ylim=range(ci.ens))
+  ciEnvelope(uDoY,ci.ens[1,],ci.ens[3,],col=col.alpha("lightGrey",0.5))
+  ciEnvelope(uDoY,ci.pf[1,],ci.pf[3,],col=col.alpha("lightGreen",0.5))
+  lines(uDoY,ci.ens[2,])
+  lines(uDoY,ci.pf[2,],col=3)
+  ci$pf[[i]] = ci.pf
+  ci$ens[[i]] = ci.ens
+}
+```
+
+#Question 1: What pools and fluxes were most affected by assimilating MODIS LAI and which were least affected?  Does this make sense?
+```
+Pools being most affected by assimilating MODIS LAI are Bleaf, LAI and litter. This make sense because they are most related to leaf. In the SSEM model, they have direct equations to link with LAI.
+
+Pools being least affected by assimilating MODIS LAI are Bwood, BSOM,RH and CWD. This make sense becasue they are mostly related to woody part and soil organic matter,which is not directly affect by leaf.
+```
+Model vs. Data
+--------------
+
+In the following section we will begin with some basic diagnostic plots and statistics assessing the predicted NEE by our simple ecosystem model. Specifically, we will calculate the Root Mean Square Error (RMSE), bias, correlation coefficient, and regression slopes of the relationship between the observed and predicted NEE for both the original ensemble and the particle filter. We will also generate scatter plots of predicted vs. observed values.
+
+```{r}
+
+## Calculate ensemble means & apply QAQC
+qaqc = (L4$qf_NEE_st == 0)
+NEE.ens = -apply(output.ensemble[,,5],1,mean)
+NEE.pf  = -apply(output[,,5],1,mean)
+E = NEE.ens[qaqc]
+P = NEE.pf[qaqc]
+O = L4$NEE_st_fMDS[qaqc]
+
+## Model vs obs regressions
+NEE.ens.fit = lm(O ~ E)
+NEE.pf.fit = lm(O ~ P)
+
+## performance stats
+stats = as.data.frame(matrix(NA,4,2))
+rownames(stats) <- c("RMSE","Bias","cor","slope")
+colnames(stats) <- c("ens","pf")
+stats["RMSE",'ens'] = sqrt(mean((E-O)^2))
+stats["RMSE",'pf']  = sqrt(mean((P-O)^2))
+stats['Bias','ens'] = mean(E-O)
+stats['Bias','pf']  = mean(P-O)
+stats['cor','ens']  = cor(E,O)
+stats['cor','pf']   = cor(P,O)
+stats['slope','ens'] = coef(NEE.ens.fit)[2]
+stats['slope','pf']  = coef(NEE.pf.fit)[2]
+knitr::kable(stats)
+
+## predicted-observed
+plot(E,O,pch=".",xlab="ensemble",ylab='observed',main='NEE (umol/m2/sec)')
+abline(0,1,col=2,lwd=2)
+abline(NEE.ens.fit,col=3,lwd=3,lty=2)
+legend("bottomright",legend=c('obs','1:1','reg'),col=1:3,lwd=3)
+
+plot(P,O,pch=".",xlab="particle filter",ylab='observed',main='NEE (umol/m2/sec)')
+abline(0,1,col=2,lwd=2)
+abline(NEE.pf.fit,col=3,lwd=3,lty=2)
+legend("bottomright",legend=c('obs','1:1','reg'),col=1:3,lwd=3)
+```
+
+#Question 2: Which version of the model performed better? Do the statistics or plots give any indication about what parameters might need to be fixed, or processeses refined in the model?
+```
+They are very similar. Overall, ensemble is slightly better.
+RMSE: ensemble is better
+Bias: ensemble is better
+cor: pf is better (closeer to 1)
+slope: ensemble is better (closeer to 1)
+
+1. The statistics (bias and slope) and plots show both models underestimate the magnitude of NEE. 
+2. Most of the underestimation happens when NEE is negative, which is during day time. However, in the nighttime or winter, NEE should be positive, and they scattered pretty well around the red 1:1 line.
+3. Therefore, this suggests that photosynthesis might be underestimated, which indicates that light use efficiency might be too low in the model.
+```
+
+#Question 3: Repeat the daily-mean time-series plot for NEE from the previous section, but add the observed daily-mean NEE to the plot. Make sure to use the gap-filled NEE estimates, since flux data are not missing at random.
+```
+NEE_st_fMDS is gap-filled NEE estimates. I did two things in this question. First, I did the statistics. Second, I did the time series plot.
+
+At the daily-mean base, Ensemble and PF are quite similiar. Overall, ensemble is better than PF. 
+RMSE: ensemble is better
+Bias: ensemble is better
+cor: ensemble is better
+slope: ensemble is better
+
+The time series plot shows in the first half of the year, models usually underestimate the magnitude of NEE. During ~DoY 210 to DoY 270, models usually overestimate the magnitude of NEE.
+```
+
+```{r,fig.height = 8}
+
+layout(matrix(c(1,2,3,3),2,2,byrow=TRUE))
+#Q3, with daily NEE
+d.P = -apply(apply(output[,,5],2,tapply,DoY,mean),1,quantile,c(0.5)) #daily mean of pf NEE (median of 200 ensemble)
+d.E = -apply(apply(output.ensemble[,,5],2,tapply,DoY,mean),1,quantile,c(0.5)) #daily mean of ensemble NEE (median of 200 ensemble)
+#d.O  = tapply(L4$NEE_st_fANN,DoY,mean) #daily observed NEE
+d.O  = tapply(L4$NEE_st_fMDS,DoY,mean)
+
+## Model vs obs regressions
+d.NEE.ens.fit = lm(d.O ~ d.E)
+d.NEE.pf.fit = lm(d.O ~ d.P)
+
+## performance stats
+d.stats = as.data.frame(matrix(NA,4,2))
+rownames(d.stats) <- c("RMSE","Bias","cor","slope")
+colnames(d.stats) <- c("ens","pf")
+d.stats["RMSE",'ens'] = sqrt(mean((d.E-d.O)^2))
+d.stats["RMSE",'pf']  = sqrt(mean((d.P-d.O)^2))
+d.stats['Bias','ens'] = mean(d.E-d.O)
+d.stats['Bias','pf']  = mean(d.P-d.O)
+d.stats['cor','ens']  = cor(d.E,d.O)
+d.stats['cor','pf']   = cor(d.P,d.O)
+d.stats['slope','ens'] = coef(d.NEE.ens.fit)[2]
+d.stats['slope','pf']  = coef(d.NEE.pf.fit)[2]
+knitr::kable(d.stats)
+
+## predicted-observed
+plot(d.E,d.O,pch=".",xlab="ensemble",ylab='observed',main='daily NEE (umol/m2/sec)')
+abline(0,1,col=2,lwd=2)
+abline(d.NEE.ens.fit,col=3,lwd=3,lty=2)
+legend("bottomright",legend=c('obs','1:1','reg'),col=1:3,lwd=3)
+
+plot(d.P,d.O,pch=".",xlab="particle filter",ylab='observed',main='daily NEE (umol/m2/sec)')
+abline(0,1,col=2,lwd=2)
+abline(d.NEE.pf.fit,col=3,lwd=3,lty=2)
+legend("bottomright",legend=c('obs','1:1','reg'),col=1:3,lwd=3)
+
+for(i in 5:5){
+  ci.pf  = -apply(apply(output[,,i],2,tapply,DoY,mean),1,quantile,c(0.025,0.5,0.975))
+  ci.ens = -apply(apply(output.ensemble[,,i],2,tapply,DoY,mean),1,quantile,c(0.025,0.5,0.975))
+  plot(uDoY,ci.ens[2,],main='NEE',xlab="time",ylab=units[i],type='l',ylim=range(ci.ens))
+  ciEnvelope(uDoY,ci.ens[1,],ci.ens[3,],col=col.alpha("lightGrey",0.5))
+  ciEnvelope(uDoY,ci.pf[1,],ci.pf[3,],col=col.alpha("lightGreen",0.5))
+  lines(uDoY,ci.ens[2,],col=col.alpha("lightGrey",0.5))
+  lines(uDoY,ci.pf[2,],col=3)
+  lines(uDoY,d.O,col='red')
+  ci$pf[[i]] = ci.pf
+  ci$ens[[i]] = ci.ens
+}
+par(mfrow=c(1,1))
+```
+Comparison to flux "climatology"
+-------------------------------
+
+In the section below we calculate the long-term average NEE for each 30 min period in the year, excluding the year we modeled (2005) as an alternative model to judge our process model against. We then update our summary statistics and predicted-observed plot
+
+```{r}
+## flux "climatology"
+fluxfiles = dir("data",pattern="AMF")
+fluxfiles = fluxfiles[grep("txt",fluxfiles)]
+fluxfiles = fluxfiles[-grep("2005",fluxfiles)]
+clim.NEE = clim.doy = NULL
+for(f in fluxfiles){
+  ff = read.csv(file.path("data",f),header=TRUE,na.strings="-9999")
+  ff[ff == -9999] = NA
+  clim.NEE = c(clim.NEE,ff$NEE_st_fMDS)
+  clim.doy = c(clim.doy,ff$DoY)
+}
+NEE.clim=tapply(clim.NEE,clim.doy,mean,na.rm=TRUE)[1:length(qaqc)]
+C = NEE.clim[qaqc]
+NEE.clim.fit = lm(O ~ C)
+summary(NEE.clim.fit)
+stats["RMSE",3]  = sqrt(mean((C-O)^2))
+stats['Bias',3]  = mean(C-O)
+stats['cor',3]   = cor(C,O)
+stats['slope',3] = coef(NEE.clim.fit)[2]
+colnames(stats)[3] <- "clim"
+knitr::kable(stats)
+plot(C,O,pch=".",xlab="climatology",ylab='observed',main='NEE (umol/m2/sec)')
+abline(0,1,col=2,lwd=2)
+abline(NEE.clim.fit,col=3,lwd=3,lty=2)
+legend("bottomright",legend=c('obs','1:1','reg'),col=1:3,lwd=3)
+
+## example cycle
+plot(L4$DoY,-L4$NEE_st_fMDS,xlim=c(200,210),type='l',lwd=2,ylim=c(-10,20),xlab="Day of Year",ylab="NEP")
+lines(L4$DoY,-NEE.clim,col=4,lwd=2,lty=2)
+lines(L4$DoY,apply(output.ensemble[,,5],1,median),col = 'red',lwd = 2, lty=3)
+lines(L4$DoY,apply(output[,,5],1,median),col = 'green',lwd = 2, lty=4)
+legend("topright",legend=c("Obs","clim",'ens','pf'),lty=1:4,col=c(1,4,'red','green'),lwd=2)
+```
+
+#Question 4: How does the process model perform relative to the average flux data? Which statistics showed the largest differences between the model and climatology? 
+```
+Overall, the process models perform worse than the average flux data (climatology).
+
+Bias shows largest difference between the process models and climatology. Then, RMSE, then slope and the last is correlation.
+
+In details:
+RMSE: climatology is lower than ensemble and PF
+Bias: climatology is much more smaller
+cor: climatology has larger correlation
+slope: climatology is closer to 1
+```
+
+Taylor diagram
+--------------
+
+Next, let's use a Taylor diagram to pull our summary statistics together into one plot. One of the advantages of the Taylor diagram is that it makes it simpler to visually diagnose the relative differences in model performance, especially when comparing multiple models or different versions of the same model. In the figure below we'll begin by plotting the ensemble, the particle filter, and the climatology. While not common, the Taylor diagram also provides a way of expressing model and data uncertainty in the plot by plotting ensemble estimates of both. Below we add all 200 members of the model ensemble, as well as a Monte Carlo estimate of observation error in the flux data. The latter is derived based on the research by Richardson et al (2006), who showed that eddy covariance data has a non-symmetric heteroskedastic, Laplace distribution. The non-symmetric part refers to the fact that there is greater error in positive fluxes (= respiration, typically nocturnal measurments) than in negative ones.
+
+```{r}
+## Taylor diagrams
+taylor.diagram(ref=O,model=E,normalize=TRUE,ref.sd=TRUE)
+taylor.diagram(ref=O,model=P,add=TRUE,normalize=TRUE,col=3)
+taylor.diagram(ref=O,model=C,add=TRUE,normalize=TRUE,col=4)
+
+## add full ensemble
+for(i in 1:ncol(output)){
+  taylor.diagram(ref=O,model=-output.ensemble[qaqc,i,5],col=2,pch=".",add=TRUE,normalize=TRUE)
+}
+
+## add data uncertainty
+rlaplace = function(n,mu,b){
+  return(mu + ifelse(rbinom(n,1,0.5),1,-1)*rexp(n,b))
+}
+beta = ifelse(O > 0,0.62+0.63*O,1.42-0.19*O) #Heteroskedasticity, parameters from Richardson et al 2006
+for(i in 1:200){
+  x = rlaplace(length(O),O,beta)
+  taylor.diagram(ref=O,model=x,col=5,add=TRUE,normalize=TRUE)
+}
+legend("topright",legend=c("ens","PF","clim","obsUncert"),col=2:5,pch=20,cex=0.7)
+```
+
+#Question 5: What did you learn about model performance from the Taylor diagram? 
+```
+1. ObsUncert is most similar to Obs. Adding uncertainty will increase the RMSE, while correlation and standard deviation ratio do not change much.
+2. Among obsUncert, climatology, ensemble, and PF, for the three criterion, left to right shows best to worst:
+   standard deviation ratio (the closer to 1, the better): obsUncert, climatology, ensemble, PF
+   RMSE (the lower, the better): obsUncert, climatology, PF, ensemble
+   correaltion (the closer to 1, the better): obsUncert, climatology, PF, ensemble
+```
+
+#Question 6: How do our simple models and flux climatology compare to the ensemble of ecosystem models in Figure 7 of Schwalm et al 2010  "A model-data intercomparison of CO2 exchange across North America: results from the north american carbon program site synthesis". J. Geophys. Res. ?
+```
+1. Overall, our simple models and flux climatology are similiar to the enemble of ecosystem models in Figure 7 of Schwalm at al 2010.
+2. Correlations are comparable.Correlation of our models are around 0.75, while some of models in Schwalm paper has better correlation which is over 0.8, such as models K,M,N,W (note that Schwalm also has some bad models).
+3. Standard deviation ratio: most of them are comparable. Our models underestimate variability, and most of Schawalm's models underestimate variability too.
+4. RMSE are also comparable. Both our models and Schwalm's models are between 0.5 to 1 (closer to 0.5). Model N,W,M,K in Schwalm's paper have pretty good RMSE.
+```
+
+Time-scales
+-----------
+
+Many ecological processes operate at multiple time scales. For example, carbon flux data responds to the diurnal cycle of light and temperature, meso-scale variability due to weather fronts, seasonal variability, and inter-annual variability driven by longer-term climate modes, as well as disturbance and succession.
+
+In the next section we look at the average diurnal cycle of the data and models.
+
+```{r}
+## diurnal cycle
+NEE.ens.diurnal = tapply(E,L4$Hour[qaqc],mean)
+NEE.pf.diurnal  = tapply(P,L4$Hour[qaqc],mean)
+NEE.clim.diurnal  = tapply(C,L4$Hour[qaqc],mean)
+NEE.obs.diurnal = tapply(O,L4$Hour[qaqc],mean)
+ylim=range(c(NEE.ens.diurnal,NEE.pf.diurnal,NEE.obs.diurnal))
+tod = sort(unique(L4$Hour))
+plot(tod,NEE.ens.diurnal,ylim=ylim,col=2,xlab="Time of Day",ylab='NEE',main="Diurnal Cycle",type='l',lwd=3)
+lines(tod,NEE.pf.diurnal,col=3,lwd=3)
+lines(tod,NEE.clim.diurnal,col=4,lwd=3)
+lines(tod,NEE.obs.diurnal,lwd=3)
+legend("bottomright",legend=c("obs","ens","PF","clim"),col=1:4,pch=20,cex=0.75)
+```
+
+#Question 7: What time of day has the largest uncertainty? What does this suggest about what parameter(s) needs to be modified in the model, in what direction, and by approximately how much? In providing this answer, recall the structure of the model as well as the fact that the particle filter has assimilated LAI so we can assume that that term is unbiased for that case.
+```
+It looks like the daytime has the largest uncertainty. Light use efficiency, params$alpha, should be increased. For example, our model has NEE around -6 at daily peak, while observation data shows NEE is around -7.5 at daily peak. If we think all errors come from lightuse efficiency, light use efficiency should increase about 25%  [which comes from (7.5-6)/6*100%].
+```
+
+The diurnal cycle isn't the only, or nessisarily the largest, time scale that the data or the model varies over. Next, let's use a wavelet transform to look at the times and timescales responsible for the most variability in the data, in the model, and in the residuals. Specifically we'll look at the observations, the ensemble mean, the ensemble residuals, and the "climatology" residuals. In all cases we're using a Morlet wavelet, which is a fairly standard choice of wavelet to characterize sine-like oscillations. In these wavelet plots color intensity indicated power (red = largest) and the periodicity in the y-axis is in terms of 30 min observations, so 48 = 1 day and 17520 = 1 year.
+
+
+```{r}
+## wavelet
+obs = L4$NEE_st_fMDS; obs[qaqc] = 0; obs[is.na(obs)] = 0
+sel = 2:2^floor(log2(length(obs))) - 1
+wt.o = morlet(obs[sel])
+#wt.e = morlet(NEE.ens[sel])
+wt.er = morlet(obs[sel]-NEE.ens[sel])
+#wt.cr = morlet(obs[sel]-NEE.clim[sel])
+wavelet.plot(wt.o,add.sig=FALSE,crn.lab="NEE obs")
+#wavelet.plot(wt.e,add.sig=FALSE,crn.lab="NEE ensemble")
+wavelet.plot(wt.er,add.sig=FALSE,crn.lab="NEE model error")
+#wavelet.plot(wt.cr,add.sig=FALSE,crn.lab="NEE clim error")
+```
+
+#Question 8: What time scales dominate the data? What time scales dominate the model residuals? 
+```
+Time scales dominate the data: In the late spring, summer and early winter, it is daily. The other time does not show obvious periodicity.
+Time scales dominate the model residuals: In the summer and fall, it is daily. During the other time, our model is pretty well.
+```
+
+
+Mining the Residuals
+--------------------
+
+In the final section we'll use a few off-the-shelf data mining approaches to look at the model residuals and ask what parts of our input space are associated with the largest model error. Note that we are not limited to just examining the effects of the model inputs, we might also look at other potential drivers that are not included in our model, such as soil moisture, to ask if model error is associated with our failure to include this (or other) drivers. Alternatively, we could have looked at other factors such as the time of day or even other model variables (e.g. is model error higher when LAI is larger or small?)
+
+Of the many algorithms out there we'll look at two: the Classification and Regression Tree (CART) model and the Random Forest model. For both we'll define our error metric as $(E-O)/beta$, where beta is the parameter equivalent to the variance in Laplace distribution. Specifically, we're using the heteroskedastic observation error to reweight the residuals to account for the fact that large residuals at times of high flux is likely due to high measurement error. Thus the errors can be interpreted as similar to the number of of standard deviations.
+
+The CART model is a classification algorithm which will build a tree that discretely classifies when the model has high and low error.
+
+The Random Forest model is more like a response surface. The Random Forest will generate 'partial dependence' plots, which indicate the importance of each factor across its range, as well as an overall estimate of the importance of each factor in the model error. 
+
+The key thing to remember in all these plots is that we're modelling the RESIDUALS in order to diagnose errors, not modeling the NEE itself.
+
+```{r}
+## define error metric and dependent variables
+err = (E-O)/beta
+x = cbind(inputs$PAR[qaqc],inputs$temp[qaqc])
+colnames(x) = c("PAR","temp")
+smp = sample.int(length(err),1000)  ## take a sample of the data since some alg. are slow
+
+### Classification tree
+rpb = rpart(err ~ x) ## bias
+plot(rpb)
+text(rpb)
+e2 = err^2
+rpe = rpart(e2 ~ x) ## sq error
+plot(rpe)
+text(rpe)
+
+## Random Forest
+rfe = randomForest(x[smp,],abs(err[smp]))
+rfe$importance
+partialPlot(rfe,x[smp,],"PAR")
+partialPlot(rfe,x[smp,],"temp")
+```
+
+#Question 9: Overall, which driver is most important in explaining model error? What conditions are most associated with model success? With model failure?  Where do these results reinforce conclusions we reached earlier and where do they shine light on new patterns you may have missed earlier?
+```
+1. Overall, according to dioganistics from random forest, PAR is the most important in explaining model error (whch has higher importance, or IncNodePurity).
+2. Model success: low PAR and median temperature (around 5-20 degree)
+   Model failure: high PAR and high temperature (>25.75 degree).
+3. These results reinforce conclusions: A. most uncertainties occur in the day time; B. Growing season (especially summer) has most of the uncertainty, and dominates the varibility at daily scale. Both Aand B illustrate the case that PAR and temperature can vary a lot during day time and summer. In addition, C.light use efficiency might introduce most of the uncertainty.
+4. Bias: Different PAR and temperature combination can result in different bias direction. In other words, their influence to model is not mono-directional (e.g. mono-direction means if we increase PAR, our uncertainty always become larger, but this is not the case in our model).
+```
+
+Functional Responses
+--------------------
+
+In this section we look at how well the model performed by assessing the modeled relationships between inputs and outputs and comparing that to the same relationship in the data. The raw relationships are very noisy, as many covariates are changing beyond just the single input variable we are evaluating, so in addition we calculate binned means for both the model and data.
+
+```{r}
+## raw
+plot(inputs$temp[qaqc],O,pch=".",ylab="NEE")
+points(inputs$temp[qaqc],E,pch=".",col=2)
+
+## binned
+nbin = 25
+#PAR = inputs$PAR[qaqc]
+#x = seq(min(PAR),max(PAR),length=nbin)
+Tair = inputs$temp[qaqc]
+xd = seq(min(Tair),max(Tair),length=nbin)
+xmid = xd[-length(xd)] + diff(xd)
+bin = cut(Tair,xd)
+Obar = tapply(O,bin,mean,na.rm=TRUE)
+Ose  = tapply(O,bin,std.error,na.rm=TRUE)
+Ebar = tapply(E,bin,mean,na.rm=TRUE)
+Ese  = tapply(E,bin,std.error,na.rm=TRUE)
+OCI = -cbind(Obar-1.96*Ose,Obar,Obar+1.96*Ose)
+ECI = -cbind(Ebar-1.96*Ese,Ebar,Ebar+1.96*Ese)
+rng = range(rbind(OCI,ECI))
+
+col2=col.alpha("darkgrey",0.9)
+col1=col.alpha("lightgrey",0.6)
+
+plot(xmid,Obar,ylim=rng,type='n',xlab="Air Temperature (C)",ylab="NEP (umol/m2/s)",cex.lab=1.3)
+ciEnvelope(xmid,ECI[,1],ECI[,3],col=col2)
+lines(xmid,ECI[,2],col="white",lwd=4)
+ciEnvelope(xmid,OCI[,1],OCI[,3],col=col1)
+lines(xmid,OCI[,2],col="lightgrey",lwd=4)
+
+legend("bottom",legend=c("Model","Data"),lwd=10,col=c(col2,col1),lty=1,cex=1.7)
+
+
+```
+
+#Question 10: Evaluate the model's ability to capture functional responses to both Temperature and PAR.
+```
+Temperature: when temperature is below 0, model has similiar mean but smaller CI. 
+             when temperature is between 5 and 20, model has less varibility, and underestimates NEE. 
+             when temerature is larger than 20, model has larger CI interval, overestimates NEE.
+
+PAR: when PAR is < 1750, model overestimates NEE.
+     when PAR is between 1750 and 2250, model slightly underestimates NEE but has higer CI interval.
+     when PAR is higher than 2250, model over-responses to PAR. Model overestimates NEE.
+```
+
+```{r}
+plot(inputs$PAR[qaqc],O,pch=".",ylab="NEE")
+points(inputs$PAR[qaqc],E,pch=".",col=2)
+
+## binned
+nbin = 25
+#PAR = inputs$PAR[qaqc]
+#x = seq(min(PAR),max(PAR),length=nbin)
+Tair = inputs$PAR[qaqc]
+xd = seq(min(Tair),max(Tair),length=nbin)
+xmid = xd[-length(xd)] + diff(xd)
+bin = cut(Tair,xd)
+Obar = tapply(O,bin,mean,na.rm=TRUE)
+Ose  = tapply(O,bin,std.error,na.rm=TRUE)
+Ebar = tapply(E,bin,mean,na.rm=TRUE)
+Ese  = tapply(E,bin,std.error,na.rm=TRUE)
+OCI = -cbind(Obar-1.96*Ose,Obar,Obar+1.96*Ose)
+ECI = -cbind(Ebar-1.96*Ese,Ebar,Ebar+1.96*Ese)
+rng = range(rbind(OCI,ECI))
+
+col2=col.alpha("darkgrey",0.9)
+col1=col.alpha("lightgrey",0.6)
+
+plot(xmid,Obar,ylim=rng,type='n',xlab="PAR (w*m^-2)",ylab="NEP (umol/m2/s)",cex.lab=1.3)
+ciEnvelope(xmid,ECI[,1],ECI[,3],col=col2)
+lines(xmid,ECI[,2],col="white",lwd=4)
+ciEnvelope(xmid,OCI[,1],OCI[,3],col=col1)
+lines(xmid,OCI[,2],col="lightgrey",lwd=4)
+
+legend("bottom",legend=c("Model","Data"),lwd=10,col=c(col2,col1),lty=1,cex=1.7)
+```
+
+
+Overall 
+-------
+
+Below is a final summary figure of the model's performance on a daily timescale that combines many of the previous assessments.
+
+```{r}
+
+### other summary figures to go in multi-panel
+par(mfrow=c(2,2))
+
+## Time-series visualization, daily means
+DoY = floor(L4$DoY-0.02)
+uDoY = sort(unique(DoY))
+i=5
+ci.pf  = apply(apply(output[,,i],2,tapply,DoY,mean),1,mean)
+NEE = -L4$NEE_st_fMDS
+NEEd = tapply(NEE,DoY,mean)
+plot(uDoY,ci.pf,xlab="time",ylab=units[i],type='l',ylim=range(c(ci.pf,NEEd)),cex.lab=1.3)
+points(uDoY,NEEd,col=2,pch="+")
+legend("topright",legend=c("Model","Data"),lty=c(1,NA),pch=c(NA,"+"),col=1:2,cex=1.3)
+
+## predicted vs observed
+plot(NEEd,ci.pf,xlab="Model",ylab="Data",cex.lab=1.3)
+abline(0,1,lty=2,lwd=4)
+abline(lm(ci.pf ~ NEEd),col=2,lwd=3,lty=3)
+legend("topleft",legend=c("1:1","Reg"),lty=2:3,lwd=4,col=1:2,cex=1.3)
+
+## Functional response
+plot(xmid,Obar,ylim=rng,type='n',xlab="Air Temperature (C)",ylab="NEP (umol/m2/s)",cex.lab=1.3)
+ciEnvelope(xmid,ECI[,1],ECI[,3],col=col2)
+lines(xmid,ECI[,2],col="white",lwd=4)
+ciEnvelope(xmid,OCI[,1],OCI[,3],col=col1)
+lines(xmid,OCI[,2],col="lightgrey",lwd=4)
+
+legend("bottom",legend=c("Model","Data"),lwd=10,col=c(col2,col1),lty=1,cex=1.3)
+
+### Classification tree
+par(mar=c(0,0,0,0))
+rpe = rpart(e2 ~ PAR+temp,as.data.frame(x),method="anova") ## sq error
+plot(rpe,margin=0.1)
+text(rpe,cex=1.5)
+
+```
+
+
+
